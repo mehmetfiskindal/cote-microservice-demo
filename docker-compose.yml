@@ -15,6 +15,7 @@ services:
       - COTE_DISCOVERY_REDIS_URL=redis://redis:6379
     volumes:
       - ./apps/api-gateway:/app/apps/api-gateway
+      - ./packages:/app/packages
       - ./node_modules:/app/node_modules
     depends_on:
       - redis
@@ -33,6 +34,7 @@ services:
       - COTE_DISCOVERY_REDIS_URL=redis://redis:6379
     volumes:
       - ./apps/order-service:/app/apps/order-service
+      - ./packages:/app/packages
       - ./node_modules:/app/node_modules
     depends_on:
       - redis
@@ -51,6 +53,7 @@ services:
       - COTE_DISCOVERY_REDIS_URL=redis://redis:6379
     volumes:
       - ./apps/payment-service:/app/apps/payment-service
+      - ./packages:/app/packages
       - ./node_modules:/app/node_modules
     depends_on:
       - redis
@@ -69,6 +72,7 @@ services:
       - COTE_DISCOVERY_REDIS_URL=redis://redis:6379
     volumes:
       - ./apps/inventory-service:/app/apps/inventory-service
+      - ./packages:/app/packages
       - ./node_modules:/app/node_modules
     depends_on:
       - redis
@@ -87,6 +91,7 @@ services:
       - COTE_DISCOVERY_REDIS_URL=redis://redis:6379
     volumes:
       - ./apps/notification-service:/app/apps/notification-service
+      - ./packages:/app/packages
       - ./node_modules:/app/node_modules
     depends_on:
       - redis

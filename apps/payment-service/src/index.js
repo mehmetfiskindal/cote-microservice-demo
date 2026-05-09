@@ -1,34 +1,64 @@
 const cote = require("cote");
+const { SERVICE_COMMANDS } = require("../../../packages/contracts/commands");
+const { ORDER_EVENTS } = require("../../../packages/contracts/events");
+const { log, error } = require("../../../packages/shared/logger");
 
-// Create cote Subscriber
-const paymentSubscriber = new cote.Subscriber({
-  name: "Payment Service Subscriber",
-  subscribesTo: ["order.created"]
-});
-
-// In-memory payments storage
+const SERVICE_NAME = "payment-service";
 const payments = [];
 
-console.log("╔════════════════════════════════════════════════════════╗");
-console.log("║          💳 Payment Service Started                    ║");
-console.log("╠════════════════════════════════════════════════════════╣");
-console.log("║  Listening for order.created events...                 ║");
-console.log("╚════════════════════════════════════════════════════════╝");
+const paymentResponder = new cote.Responder({
+  name: "Payment Service Responder",
+  key: "payment"
+});
 
-// Handle order.created event
-paymentSubscriber.on("order.created", async (event) => {
-  console.log("[Payment Service] 📨 Received order.created event");
-  console.log("[Payment Service]   Order ID:", event.orderId);
-  console.log("[Payment Service]   Amount:", event.totalPrice);
+const paymentSubscriber = new cote.Subscriber({
+  name: "Payment Service Subscriber",
+  subscribesTo: [ORDER_EVENTS.ORDER_CREATED]
+});
+
+const paymentPublisher = new cote.Publisher({
+  name: "Payment Service Publisher",
+  broadcasts: [ORDER_EVENTS.PAYMENT_COMPLETED, ORDER_EVENTS.PAYMENT_FAILED]
+});
+
+log(SERVICE_NAME, "Payment Service started", {
+  listeningFor: ORDER_EVENTS.ORDER_CREATED
+});
+
+paymentResponder.on(SERVICE_COMMANDS.PAYMENT_HEALTH_CHECK, async () => ({
+  service: SERVICE_NAME,
+  status: "ok",
+  payments: payments.length,
+  timestamp: new Date().toISOString()
+}));
+
+paymentSubscriber.on(ORDER_EVENTS.ORDER_CREATED, async (event) => {
+  log(SERVICE_NAME, "Received order created event", {
+    orderId: event.orderId,
+    correlationId: event.correlationId,
+    amount: event.totalPrice
+  });
 
   try {
-    // Simulate payment processing
-    console.log("[Payment Service] Processing payment...");
-
-    // Simulate processing delay
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Create payment record
+    const isPaymentSuccessful = Math.random() > 0.3;
+
+    if (!isPaymentSuccessful) {
+      const failedEvent = {
+        correlationId: event.correlationId,
+        orderId: event.orderId,
+        userId: event.userId,
+        amount: event.totalPrice,
+        reason: "Payment provider rejected the transaction",
+        failedAt: new Date().toISOString()
+      };
+
+      paymentPublisher.publish(ORDER_EVENTS.PAYMENT_FAILED, failedEvent);
+      log(SERVICE_NAME, "Payment failed", failedEvent);
+      return;
+    }
+
     const payment = {
       paymentId: `pay-${Date.now()}`,
       orderId: event.orderId,
@@ -42,13 +72,23 @@ paymentSubscriber.on("order.created", async (event) => {
 
     payments.push(payment);
 
-    console.log("[Payment Service] ✓ Payment processed successfully");
-    console.log("[Payment Service]   Payment ID:", payment.paymentId);
-    console.log("[Payment Service]   Status:", payment.status);
-    console.log("[Payment Service]   Amount:", payment.amount);
-    console.log("─".repeat(50));
+    const completedEvent = {
+      correlationId: event.correlationId,
+      orderId: event.orderId,
+      userId: event.userId,
+      items: event.items,
+      paymentId: payment.paymentId,
+      amount: payment.amount,
+      paidAt: payment.paidAt
+    };
 
-  } catch (error) {
-    console.error("[Payment Service] ✗ Payment processing failed:", error.message);
+    paymentPublisher.publish(ORDER_EVENTS.PAYMENT_COMPLETED, completedEvent);
+    log(SERVICE_NAME, "Payment completed", completedEvent);
+  } catch (err) {
+    error(SERVICE_NAME, "Payment processing crashed", {
+      orderId: event.orderId,
+      correlationId: event.correlationId,
+      error: err.message
+    });
   }
 });

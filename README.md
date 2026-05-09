@@ -1,138 +1,181 @@
-# 🚀 Cote.js Microservice Demo
+# Cote.js Microservice Demo
 
-This project demonstrates a basic event-driven microservice architecture using **Node.js**, **Express.js**, and **Cote.js**.
+## Why this project exists
 
-## 📋 Overview
+This project is a portfolio-friendly Node.js microservice demo. It does not claim to be a production microservice platform; instead, it demonstrates the core communication patterns behind microservice systems with a small order-processing flow.
 
-This demo showcases a complete order processing system with multiple microservices communicating through event-driven architecture. It's perfect for learning microservices concepts and can be showcased in your portfolio.
+The demo uses Express.js as the external API Gateway and cote.js for internal service communication. It includes request/response messaging, publish/subscribe events, shared message contracts, correlation IDs, failure simulation, order lifecycle tracking, structured logs, Swagger docs, validation, and Docker-based service orchestration.
 
-## 🏗️ Architecture
+## Architecture
 
-```
-┌─────────────────┐
-│   Client/Postman │
-└────────┬────────┘
-         │ HTTP Request
-         ▼
-┌────────────────────────┐
-│     API Gateway        │ (Express.js - Port 3000)
-│   - HTTP Endpoints     │
-│   - Request Routing    │
-└────────┬───────────────┘
-         │ cote.js Request/Response
-         ▼
-┌────────────────────────┐
-│    Order Service       │ (cote.js Responder)
-│   - Order Creation     │
-│   - Event Publishing   │
-└────────┬───────────────┘
-         │ cote.js Publish/Subscribe
-         ▼
-┌──────────────┬──────────────┬──────────────┐
-│   Payment    │  Inventory   │ Notification │
-│   Service    │   Service    │   Service    │
-│ - Payment    │ - Stock      │ - Email      │
-│   Processing │   Updates    │ - SMS        │
-└──────────────┴──────────────┴──────────────┘
-```
-
-## 🛠️ Services
-
-### 1. API Gateway (`apps/api-gateway`)
-- **Technology:** Express.js
-- **Port:** 3000
-- **Role:** External HTTP interface
-- **Endpoints:**
-  - `GET /health` - Health check
-  - `GET /orders` - Get all orders
-  - `GET /orders/:id` - Get order by ID
-  - `POST /orders` - Create new order
-
-### 2. Order Service (`apps/order-service`)
-- **Technology:** cote.js Responder + Publisher
-- **Role:** Order business logic
-- **Features:**
-  - Create orders
-  - Store orders in memory
-  - Publish `order.created` events
-
-### 3. Payment Service (`apps/payment-service`)
-- **Technology:** cote.js Subscriber
-- **Role:** Payment processing simulation
-- **Features:**
-  - Listen for `order.created` events
-  - Simulate payment processing
-  - Log payment results
-
-### 4. Inventory Service (`apps/inventory-service`)
-- **Technology:** cote.js Subscriber
-- **Role:** Stock management simulation
-- **Features:**
-  - Listen for `order.created` events
-  - Update stock levels
-  - Log inventory changes
-
-### 5. Notification Service (`apps/notification-service`)
-- **Technology:** cote.js Subscriber
-- **Role:** User notification simulation
-- **Features:**
-  - Listen for `order.created` events
-  - Simulate email notifications
-  - Simulate SMS notifications
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Node.js (v18 or higher)
-- npm or yarn
-
-### Installation
-
-1. **Clone the repository:**
-```bash
-git clone <your-repo-url>
-cd cote-microservice-demo
+```txt
+Client
+  |
+  v
+API Gateway - Express.js
+  |
+  | request/response: order.create
+  v
+Order Service - cote Responder + Publisher + Subscriber
+  |
+  +--> order.created
+          |
+          v
+      Payment Service
+          |
+          +--> payment.completed
+          |       |
+          |       v
+          |   Inventory Service
+          |       |
+          |       +--> inventory.reserved
+          |               |
+          |               v
+          |           Order Service updates order to COMPLETED
+          |               |
+          |               +--> order.completed
+          |                       |
+          |                       v
+          |                   Notification Service
+          |
+          +--> payment.failed
+                  |
+                  v
+              Order Service updates order to FAILED
+                  |
+                  +--> order.failed
+                          |
+                          v
+                      Notification Service
 ```
 
-2. **Install dependencies:**
+## Services
+
+| Service | Role | Communication |
+| --- | --- | --- |
+| `api-gateway` | External HTTP interface, request validation, Swagger docs | Express + cote Requester |
+| `order-service` | Order state machine and in-memory event timeline | cote Responder, Publisher, Subscriber |
+| `payment-service` | Simulated payment processing with random failure | cote Subscriber + Publisher |
+| `inventory-service` | Stock reservation after successful payment | cote Subscriber + Publisher |
+| `notification-service` | Completion/failure notification simulation | cote Subscriber + Publisher |
+
+## Communication patterns
+
+The services communicate through shared message contracts in `packages/contracts` instead of direct imports between service folders or HTTP calls between internal services.
+
+```txt
+packages/contracts/
+  commands.js
+  events.js
+```
+
+The API Gateway uses request/response commands such as `order.create` and `order.getById`. Domain changes are propagated through events such as `order.created`, `payment.completed`, `inventory.reserved`, `order.completed`, and `order.failed`.
+
+## Event flow
+
+Successful order flow:
+
+```txt
+order.created
+payment.completed
+inventory.reserved
+order.completed
+notification.sent
+```
+
+Failed payment flow:
+
+```txt
+order.created
+payment.failed
+order.failed
+notification.sent
+```
+
+Failed inventory flow:
+
+```txt
+order.created
+payment.completed
+inventory.failed
+order.failed
+notification.sent
+```
+
+## Order statuses
+
+```txt
+PENDING
+PAYMENT_COMPLETED
+INVENTORY_RESERVED
+COMPLETED
+FAILED
+```
+
+## Failure flow
+
+The payment service intentionally fails some requests:
+
+```js
+const isPaymentSuccessful = Math.random() > 0.3;
+```
+
+This makes the demo useful for showing how an event-driven system reacts when part of the flow fails. The order service records the failure event, updates the order status to `FAILED`, and publishes `order.failed` so the notification service can react.
+
+## Correlation IDs and logs
+
+Every `POST /orders` request receives a `correlationId` from the API Gateway. That ID is carried through every command/event and appears in structured JSON logs.
+
+Example log:
+
+```json
+{
+  "service": "payment-service",
+  "message": "Payment completed",
+  "orderId": "order-id",
+  "correlationId": "correlation-id",
+  "timestamp": "2026-05-10T12:00:00.000Z"
+}
+```
+
+This demonstrates the basic idea behind distributed tracing without adding a full tracing stack.
+
+## API endpoints
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/health` | Gateway and order-service health |
+| `GET` | `/docs` | Swagger UI |
+| `POST` | `/orders` | Create an order |
+| `GET` | `/orders` | List orders |
+| `GET` | `/orders/:id` | Get one order |
+| `GET` | `/orders/:id/timeline` | Get event timeline for one order |
+
+## How to run
+
+### Local development
+
 ```bash
 npm install
-```
-
-3. **Start all services:**
-```bash
 npm run dev
 ```
 
-This will start all 5 services concurrently with hot reload using nodemon.
-
-### Alternative: Start services individually
+### Docker Compose
 
 ```bash
-# Terminal 1 - API Gateway
-npm run dev:api
-
-# Terminal 2 - Order Service
-npm run dev:order
-
-# Terminal 3 - Payment Service
-npm run dev:payment
-
-# Terminal 4 - Inventory Service
-npm run dev:inventory
-
-# Terminal 5 - Notification Service
-npm run dev:notification
+docker compose up --build
 ```
 
-## 🧪 Testing
+Then open:
 
-### 1. Health Check
-```bash
-curl http://localhost:3000/health
+```txt
+http://localhost:3000/docs
 ```
 
-### 2. Create an Order
+## Example requests
+
+Create an order:
+
 ```bash
 curl -X POST http://localhost:3000/orders \
   -H "Content-Type: application/json" \
@@ -142,191 +185,89 @@ curl -X POST http://localhost:3000/orders \
       {
         "productId": "product-1",
         "quantity": 2
-      },
-      {
-        "productId": "product-2",
-        "quantity": 1
       }
     ],
-    "totalPrice": 1500
+    "totalPrice": 500
   }'
 ```
 
-### 3. Get All Orders
-```bash
-curl http://localhost:3000/orders
-```
+Get the order:
 
-### 4. Get Specific Order
 ```bash
 curl http://localhost:3000/orders/<order-id>
 ```
 
-## 📊 Expected Output
-
-When you create an order, you should see logs from all services:
-
-```
-# API Gateway
-[API Gateway] Received order creation request
-
-# Order Service
-[Order Service] Creating new order for user: user-1
-[Order Service] ✓ Order created: <uuid>
-[Order Service] 📢 Event published: order.created
-
-# Payment Service
-[Payment Service] 📨 Received order.created event
-[Payment Service] Processing payment...
-[Payment Service] ✓ Payment processed successfully
-
-# Inventory Service
-[Inventory Service] 📨 Received order.created event
-[Inventory Service] Updating inventory...
-[Inventory Service] ✓ Inventory updated successfully
-
-# Notification Service
-[Notification Service] 📨 Received order.created event
-[Notification Service] Sending notifications...
-[Notification Service]   ✓ Email sent to user: user-1
-[Notification Service]   ✓ SMS sent
-[Notification Service] ✓ All notifications sent successfully
-```
-
-## 🐳 Docker Support
-
-You can also run the entire system with Docker Compose:
+Get the event timeline:
 
 ```bash
-# Build and start all services
-docker-compose up --build
-
-# Start in background
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop services
-docker-compose down
+curl http://localhost:3000/orders/<order-id>/timeline
 ```
 
-## 📚 Key Concepts Demonstrated
+Validation example:
 
-### 1. **API Gateway Pattern**
-- Single entry point for clients
-- Request routing to internal services
-- Protocol translation (HTTP → cote.js)
-
-### 2. **Request/Response Pattern**
-- API Gateway sends request to Order Service
-- Order Service responds with result
-- Synchronous communication
-
-### 3. **Publish/Subscribe Pattern**
-- Order Service publishes events
-- Multiple services subscribe to events
-- Asynchronous, decoupled communication
-
-### 4. **Event-Driven Architecture**
-- Services react to events
-- Loose coupling between services
-- Independent scaling
-
-### 5. **Service Discovery**
-- Automatic service discovery with cote.js
-- No manual IP/port configuration
-- Zero-configuration networking
-
-## 📁 Project Structure
-
-```
-cote-microservice-demo/
-│
-├── package.json                 # Root package.json with all scripts
-├── docker-compose.yml          # Docker orchestration
-├── Dockerfile                  # Docker image definition
-├── README.md                   # This file
-│
-└── apps/
-    ├── api-gateway/            # HTTP API Gateway
-    │   └── src/
-    │       └── index.js
-    │
-    ├── order-service/          # Order business logic
-    │   └── src/
-    │       └── index.js
-    │
-    ├── payment-service/        # Payment processing
-    │   └── src/
-    │       └── index.js
-    │
-    ├── inventory-service/      # Inventory management
-    │   └── src/
-    │       └── index.js
-    │
-    └── notification-service/   # Notifications
-        └── src/
-            └── index.js
+```bash
+curl -X POST http://localhost:3000/orders \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": "",
+    "items": [],
+    "totalPrice": 0
+  }'
 ```
 
-## 🔧 Technologies Used
+## Project structure
 
-- **Node.js** - Runtime environment
-- **Express.js** - Web framework for API Gateway
-- **Cote.js** - Microservices toolkit (request/response + pub/sub)
-- **Concurrently** - Run multiple services simultaneously
-- **Nodemon** - Hot reload during development
-- **Redis** - Optional discovery backend (via Docker)
+```txt
+cote-microservis-demo/
+  apps/
+    api-gateway/
+    order-service/
+    payment-service/
+    inventory-service/
+    notification-service/
+  packages/
+    contracts/
+      commands.js
+      events.js
+    shared/
+      logger.js
+  Dockerfile
+  docker-compose.yml
+  package.json
+```
 
-## 🎯 Learning Outcomes
+## Why cote.js?
 
-After working with this demo, you'll understand:
+This demo uses cote.js to explore zero-configuration service communication in Node.js. It is useful for learning request/response and publish/subscribe patterns without setting up a heavier broker first.
 
-✅ How microservices communicate internally
-✅ API Gateway pattern and its benefits
-✅ Request/Response vs Publish/Subscribe patterns
-✅ Event-driven architecture principles
-✅ Service decoupling and independence
-✅ Zero-configuration service discovery
-✅ How to trace requests through multiple services
+In production systems, alternatives such as RabbitMQ, Kafka, Redis Pub/Sub, NATS, or AWS SNS/SQS can also be used depending on durability, scalability, ordering, throughput, and operational needs.
 
-## 🚀 Next Steps
+## What I learned
 
-To extend this demo:
+- How to expose one HTTP API Gateway while keeping internal services decoupled.
+- How to model request/response commands separately from publish/subscribe events.
+- Why shared contracts matter in event-driven systems.
+- How correlation IDs help trace one business flow across multiple services.
+- How failure events affect order state and downstream notifications.
+- Why an event timeline is useful for debugging distributed workflows.
 
-1. **Add Database**: Replace in-memory storage with PostgreSQL + Prisma
-2. **Add Authentication**: JWT-based auth in API Gateway
-3. **Add Validation**: Input validation using Joi or Zod
-4. **Add Error Handling**: Implement retry logic and dead letter queues
-5. **Add Metrics**: Integrate with Prometheus/Grafana
-6. **Compare with Other Tools**: Implement same architecture using RabbitMQ, Redis Pub/Sub, or NATS
+## Possible improvements
 
-## 📝 License
+- Persist orders and events with PostgreSQL + Prisma.
+- Add retry and dead-letter simulations.
+- Add authentication at the API Gateway.
+- Add integration tests that boot all services.
+- Replace in-memory event storage with durable event persistence.
+- Compare the same flow with RabbitMQ, Kafka, NATS, or Redis Streams.
 
-MIT
+## Portfolio description
 
-## 🤝 Contributing
+```txt
+A Node.js microservice demo using Express.js as an API Gateway and cote.js for internal service communication. The project demonstrates request/response messaging, publish/subscribe events, order lifecycle tracking, correlation IDs, failure simulation and Docker-based service orchestration.
+```
 
-Feel free to fork and extend this demo. It's meant to be a learning resource!
+Turkish version:
 
----
-
-## 💼 Portfolio Usage
-
-You can add this project to your portfolio with the following description:
-
-> **Node.js Microservices Demo**
->
-> Built a microservice architecture using Node.js, Express.js, and Cote.js. Implemented an API Gateway pattern with request/response communication and an event-driven system using publish/subscribe patterns. The system handles order processing across multiple independent services (Order, Payment, Inventory, Notification) with automatic service discovery and zero-configuration networking.
->
-> **Key Features:**
-> - API Gateway for external communication
-> - Event-driven architecture with pub/sub
-> - Service-to-service communication via cote.js
-> - Docker containerization
-> - Hot reload development environment
-
----
-
-Happy coding! 🎉
+```txt
+Express.js API Gateway ve cote.js servis iletişimi kullanılarak geliştirilmiş event-driven microservice demo projesi. Sipariş oluşturma, ödeme simülasyonu, stok rezervasyonu, bildirim gönderimi, correlation ID, event timeline ve hata senaryolarını içerir.
+```

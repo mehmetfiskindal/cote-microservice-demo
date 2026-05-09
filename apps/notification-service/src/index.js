@@ -1,65 +1,85 @@
 const cote = require("cote");
+const { SERVICE_COMMANDS } = require("../../../packages/contracts/commands");
+const { ORDER_EVENTS } = require("../../../packages/contracts/events");
+const { log, error } = require("../../../packages/shared/logger");
 
-// Create cote Subscriber
-const notificationSubscriber = new cote.Subscriber({
-  name: "Notification Service Subscriber",
-  subscribesTo: ["order.created"]
-});
-
-// In-memory notifications log
+const SERVICE_NAME = "notification-service";
 const notifications = [];
 
-console.log("╔════════════════════════════════════════════════════════╗");
-console.log("║          📧 Notification Service Started               ║");
-console.log("╠════════════════════════════════════════════════════════╣");
-console.log("║  Listening for order.created events...                 ║");
-console.log("╚════════════════════════════════════════════════════════╝");
+const notificationResponder = new cote.Responder({
+  name: "Notification Service Responder",
+  key: "notification"
+});
 
-// Handle order.created event
-notificationSubscriber.on("order.created", async (event) => {
-  console.log("[Notification Service] 📨 Received order.created event");
-  console.log("[Notification Service]   Order ID:", event.orderId);
-  console.log("[Notification Service]   User ID:", event.userId);
+const notificationSubscriber = new cote.Subscriber({
+  name: "Notification Service Subscriber",
+  subscribesTo: [ORDER_EVENTS.ORDER_COMPLETED, ORDER_EVENTS.ORDER_FAILED]
+});
 
+const notificationPublisher = new cote.Publisher({
+  name: "Notification Service Publisher",
+  broadcasts: [ORDER_EVENTS.NOTIFICATION_SENT]
+});
+
+log(SERVICE_NAME, "Notification Service started", {
+  listeningFor: [ORDER_EVENTS.ORDER_COMPLETED, ORDER_EVENTS.ORDER_FAILED]
+});
+
+notificationResponder.on(SERVICE_COMMANDS.NOTIFICATION_HEALTH_CHECK, async () => ({
+  service: SERVICE_NAME,
+  status: "ok",
+  notifications: notifications.length,
+  timestamp: new Date().toISOString()
+}));
+
+function createNotification(eventType, event) {
+  const isFailed = eventType === ORDER_EVENTS.ORDER_FAILED;
+
+  return {
+    notificationId: `notif-${Date.now()}`,
+    type: "email",
+    orderId: event.orderId,
+    userId: event.userId,
+    subject: isFailed
+      ? `Order Failed #${event.orderId}`
+      : `Order Completed #${event.orderId}`,
+    message: isFailed
+      ? `Your order could not be completed. Reason: ${event.reason}`
+      : `Your order has been completed successfully.`,
+    sentAt: new Date().toISOString()
+  };
+}
+
+async function sendNotification(eventType, event) {
   try {
-    console.log("[Notification Service] Sending notifications...");
+    const notification = createNotification(eventType, event);
+    notifications.push(notification);
 
-    // Simulate sending email notification
-    const emailNotification = {
-      type: "email",
-      notificationId: `notif-${Date.now()}`,
+    const sentEvent = {
+      correlationId: event.correlationId,
       orderId: event.orderId,
       userId: event.userId,
-      subject: `Order Confirmation #${event.orderId}`,
-      message: `Your order for $${event.totalPrice} has been received and is being processed.`,
-      sentAt: new Date().toISOString()
+      sourceEvent: eventType,
+      notificationId: notification.notificationId,
+      channel: notification.type,
+      sentAt: notification.sentAt
     };
 
-    notifications.push(emailNotification);
-
-    console.log("[Notification Service]   ✓ Email sent to user:", event.userId);
-    console.log("[Notification Service]     Subject:", emailNotification.subject);
-    console.log("[Notification Service]     Message:", emailNotification.message);
-
-    // Simulate sending SMS notification
-    const smsNotification = {
-      type: "sms",
-      notificationId: `sms-${Date.now()}`,
+    notificationPublisher.publish(ORDER_EVENTS.NOTIFICATION_SENT, sentEvent);
+    log(SERVICE_NAME, "Notification sent", sentEvent);
+  } catch (err) {
+    error(SERVICE_NAME, "Notification sending failed", {
       orderId: event.orderId,
-      userId: event.userId,
-      message: `Order #${event.orderId.slice(-8)} confirmed! Total: $${event.totalPrice}`,
-      sentAt: new Date().toISOString()
-    };
-
-    notifications.push(smsNotification);
-
-    console.log("[Notification Service]   ✓ SMS sent");
-    console.log("[Notification Service]     Message:", smsNotification.message);
-
-    console.log("[Notification Service] ✓ All notifications sent successfully");
-    console.log("─".repeat(50));
-
-  } catch (error) {
-    console.error("[Notification Service] ✗ Notification sending failed:", error.message);
+      correlationId: event.correlationId,
+      error: err.message
+    });
   }
+}
+
+notificationSubscriber.on(ORDER_EVENTS.ORDER_COMPLETED, event => {
+  sendNotification(ORDER_EVENTS.ORDER_COMPLETED, event);
+});
+
+notificationSubscriber.on(ORDER_EVENTS.ORDER_FAILED, event => {
+  sendNotification(ORDER_EVENTS.ORDER_FAILED, event);
 });
