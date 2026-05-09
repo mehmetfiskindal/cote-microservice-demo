@@ -1,35 +1,44 @@
 {
-  "name": "cote-microservice-demo",
+  "name": "order-processing-microservices-v3",
   "version": "1.0.0",
-  "description": "A demo microservice architecture using Node.js, Express.js and cote.js",
-  "main": "index.js",
+  "private": true,
+  "description": "V3 event-driven microservice demo with TypeScript, cote.js, Prisma, PostgreSQL, retries and compensation.",
   "scripts": {
     "dev": "concurrently \"npm run dev:api\" \"npm run dev:order\" \"npm run dev:payment\" \"npm run dev:inventory\" \"npm run dev:notification\"",
-    "dev:api": "nodemon apps/api-gateway/src/index.js",
-    "dev:order": "nodemon apps/order-service/src/index.js",
-    "dev:payment": "nodemon apps/payment-service/src/index.js",
-    "dev:inventory": "nodemon apps/inventory-service/src/index.js",
-    "dev:notification": "nodemon apps/notification-service/src/index.js",
-    "start": "npm run dev"
+    "dev:api": "tsx watch apps/api-gateway/src/index.ts",
+    "dev:order": "tsx watch apps/order-service/src/index.ts",
+    "dev:payment": "tsx watch apps/payment-service/src/index.ts",
+    "dev:inventory": "tsx watch apps/inventory-service/src/index.ts",
+    "dev:notification": "tsx watch apps/notification-service/src/index.ts",
+    "build": "tsc --noEmit",
+    "prisma:generate": "npm run prisma:generate:order && npm run prisma:generate:payment && npm run prisma:generate:inventory && npm run prisma:generate:notification",
+    "prisma:generate:order": "prisma generate --schema apps/order-service/prisma/schema.prisma",
+    "prisma:generate:payment": "prisma generate --schema apps/payment-service/prisma/schema.prisma",
+    "prisma:generate:inventory": "prisma generate --schema apps/inventory-service/prisma/schema.prisma",
+    "prisma:generate:notification": "prisma generate --schema apps/notification-service/prisma/schema.prisma",
+    "db:push": "npm run db:push:order && npm run db:push:payment && npm run db:push:inventory && npm run db:push:notification",
+    "db:push:order": "prisma db push --schema apps/order-service/prisma/schema.prisma",
+    "db:push:payment": "prisma db push --schema apps/payment-service/prisma/schema.prisma",
+    "db:push:inventory": "prisma db push --schema apps/inventory-service/prisma/schema.prisma",
+    "db:push:notification": "prisma db push --schema apps/notification-service/prisma/schema.prisma"
   },
-  "keywords": [
-    "microservices",
-    "cote",
-    "nodejs",
-    "express",
-    "event-driven"
-  ],
-  "author": "",
-  "license": "MIT",
   "dependencies": {
+    "@prisma/client": "^6.18.0",
     "cors": "^2.8.5",
     "cote": "^1.2.0",
+    "dotenv": "^17.4.2",
     "express": "^4.18.2",
     "swagger-ui-express": "^5.0.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.2",
+    "@types/swagger-ui-express": "^4.1.8",
     "concurrently": "^8.2.2",
-    "nodemon": "^3.0.2"
+    "prisma": "^6.18.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
   }
 }

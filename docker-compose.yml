@@ -1,113 +1,135 @@
-version: '3.8'
-
 services:
-  # API Gateway Service
   api-gateway:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: api-gateway
+    container_name: v3-api-gateway
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=development
-      - PORT=3000
-      - COTE_DISCOVERY_REDIS_URL=redis://redis:6379
-    volumes:
-      - ./apps/api-gateway:/app/apps/api-gateway
-      - ./packages:/app/packages
-      - ./node_modules:/app/node_modules
+      NODE_ENV: development
+      PORT: 3000
+      COTE_DISCOVERY_REDIS_URL: redis://redis:6379
     depends_on:
       - redis
-    networks:
-      - microservices-network
+      - order-service
+      - payment-service
+      - inventory-service
+      - notification-service
     command: npm run dev:api
 
-  # Order Service
   order-service:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: order-service
+    container_name: v3-order-service
     environment:
-      - NODE_ENV=development
-      - COTE_DISCOVERY_REDIS_URL=redis://redis:6379
-    volumes:
-      - ./apps/order-service:/app/apps/order-service
-      - ./packages:/app/packages
-      - ./node_modules:/app/node_modules
+      NODE_ENV: development
+      ORDER_DATABASE_URL: postgresql://postgres:postgres@order-db:5432/order_db
+      COTE_DISCOVERY_REDIS_URL: redis://redis:6379
     depends_on:
       - redis
-    networks:
-      - microservices-network
-    command: npm run dev:order
+      - order-db
+    command: sh -c "npx prisma generate --schema apps/order-service/prisma/schema.prisma && until npx prisma db push --schema apps/order-service/prisma/schema.prisma; do sleep 2; done && npm run dev:order"
 
-  # Payment Service
   payment-service:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: payment-service
+    container_name: v3-payment-service
     environment:
-      - NODE_ENV=development
-      - COTE_DISCOVERY_REDIS_URL=redis://redis:6379
-    volumes:
-      - ./apps/payment-service:/app/apps/payment-service
-      - ./packages:/app/packages
-      - ./node_modules:/app/node_modules
+      NODE_ENV: development
+      PAYMENT_DATABASE_URL: postgresql://postgres:postgres@payment-db:5432/payment_db
+      COTE_DISCOVERY_REDIS_URL: redis://redis:6379
     depends_on:
       - redis
-    networks:
-      - microservices-network
-    command: npm run dev:payment
+      - payment-db
+    command: sh -c "npx prisma generate --schema apps/payment-service/prisma/schema.prisma && until npx prisma db push --schema apps/payment-service/prisma/schema.prisma; do sleep 2; done && npm run dev:payment"
 
-  # Inventory Service
   inventory-service:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: inventory-service
+    container_name: v3-inventory-service
     environment:
-      - NODE_ENV=development
-      - COTE_DISCOVERY_REDIS_URL=redis://redis:6379
-    volumes:
-      - ./apps/inventory-service:/app/apps/inventory-service
-      - ./packages:/app/packages
-      - ./node_modules:/app/node_modules
+      NODE_ENV: development
+      INVENTORY_DATABASE_URL: postgresql://postgres:postgres@inventory-db:5432/inventory_db
+      COTE_DISCOVERY_REDIS_URL: redis://redis:6379
     depends_on:
       - redis
-    networks:
-      - microservices-network
-    command: npm run dev:inventory
+      - inventory-db
+    command: sh -c "npx prisma generate --schema apps/inventory-service/prisma/schema.prisma && until npx prisma db push --schema apps/inventory-service/prisma/schema.prisma; do sleep 2; done && npm run dev:inventory"
 
-  # Notification Service
   notification-service:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: notification-service
+    container_name: v3-notification-service
     environment:
-      - NODE_ENV=development
-      - COTE_DISCOVERY_REDIS_URL=redis://redis:6379
-    volumes:
-      - ./apps/notification-service:/app/apps/notification-service
-      - ./packages:/app/packages
-      - ./node_modules:/app/node_modules
+      NODE_ENV: development
+      NOTIFICATION_DATABASE_URL: postgresql://postgres:postgres@notification-db:5432/notification_db
+      COTE_DISCOVERY_REDIS_URL: redis://redis:6379
     depends_on:
       - redis
-    networks:
-      - microservices-network
-    command: npm run dev:notification
+      - notification-db
+    command: sh -c "npx prisma generate --schema apps/notification-service/prisma/schema.prisma && until npx prisma db push --schema apps/notification-service/prisma/schema.prisma; do sleep 2; done && npm run dev:notification"
 
-  # Redis (for cote.js discovery - optional but recommended)
+  order-db:
+    image: postgres:16-alpine
+    container_name: v3-order-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: order_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - order-db-data:/var/lib/postgresql/data
+
+  payment-db:
+    image: postgres:16-alpine
+    container_name: v3-payment-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: payment_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - payment-db-data:/var/lib/postgresql/data
+
+  inventory-db:
+    image: postgres:16-alpine
+    container_name: v3-inventory-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: inventory_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - inventory-db-data:/var/lib/postgresql/data
+
+  notification-db:
+    image: postgres:16-alpine
+    container_name: v3-notification-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: notification_db
+    ports:
+      - "5436:5432"
+    volumes:
+      - notification-db-data:/var/lib/postgresql/data
+
   redis:
     image: redis:7-alpine
-    container_name: redis
+    container_name: v3-redis
     ports:
       - "6379:6379"
-    networks:
-      - microservices-network
 
-networks:
-  microservices-network:
-    driver: bridge
+volumes:
+  order-db-data:
+  payment-db-data:
+  inventory-db-data:
+  notification-db-data:

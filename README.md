@@ -1,10 +1,6 @@
-# Cote.js Microservice Demo
+# Order Processing Microservices V3
 
-## Why this project exists
-
-This project is a portfolio-friendly Node.js microservice demo. It does not claim to be a production microservice platform; instead, it demonstrates the core communication patterns behind microservice systems with a small order-processing flow.
-
-The demo uses Express.js as the external API Gateway and cote.js for internal service communication. It includes request/response messaging, publish/subscribe events, shared message contracts, correlation IDs, failure simulation, order lifecycle tracking, structured logs, Swagger docs, validation, and Docker-based service orchestration.
+V3 is a TypeScript microservice demo using Express.js, cote.js, PostgreSQL, Prisma and Docker Compose. The goal is to show more than "services emitting events": each service owns its own data, failure paths are explicit, and the inventory failure path triggers a refund compensation flow.
 
 ## Architecture
 
@@ -12,68 +8,56 @@ The demo uses Express.js as the external API Gateway and cote.js for internal se
 Client
   |
   v
-API Gateway - Express.js
+Express API Gateway
   |
-  | request/response: order.create
+  | cote.js request/response
   v
-Order Service - cote Responder + Publisher + Subscriber
+Order Service  ---> order-db
   |
-  +--> order.created
-          |
-          v
-      Payment Service
-          |
-          +--> payment.completed
-          |       |
-          |       v
-          |   Inventory Service
-          |       |
-          |       +--> inventory.reserved
-          |               |
-          |               v
-          |           Order Service updates order to COMPLETED
-          |               |
-          |               +--> order.completed
-          |                       |
-          |                       v
-          |                   Notification Service
-          |
-          +--> payment.failed
-                  |
-                  v
-              Order Service updates order to FAILED
-                  |
-                  +--> order.failed
-                          |
-                          v
-                      Notification Service
+  | order.created
+  v
+Payment Service ---> payment-db
+  |
+  | payment.completed
+  v
+Inventory Service ---> inventory-db
+  |
+  | inventory.reserved / inventory.failed
+  v
+Order Service
+  |
+  | order.completed / order.failed / payment.refund_requested
+  v
+Notification Service ---> notification-db
 ```
+
+## What V3 Demonstrates
+
+- TypeScript service code
+- Express API Gateway with Zod validation and Swagger UI
+- cote.js request/response and publish/subscribe
+- Separate PostgreSQL database per service
+- Prisma schemas per service
+- Order lifecycle tracking and event timeline
+- Correlation IDs carried through every command/event
+- Payment retry attempts
+- Failure simulation
+- Refund compensation after inventory failure
+- Simple Order Service outbox worker
 
 ## Services
 
-| Service | Role | Communication |
+| Service | Responsibility | Database |
 | --- | --- | --- |
-| `api-gateway` | External HTTP interface, request validation, Swagger docs | Express + cote Requester |
-| `order-service` | Order state machine and in-memory event timeline | cote Responder, Publisher, Subscriber |
-| `payment-service` | Simulated payment processing with random failure | cote Subscriber + Publisher |
-| `inventory-service` | Stock reservation after successful payment | cote Subscriber + Publisher |
-| `notification-service` | Completion/failure notification simulation | cote Subscriber + Publisher |
+| `api-gateway` | HTTP routing, validation, correlation ID | none |
+| `order-service` | Order creation, state machine, timeline, outbox | `order_db` |
+| `payment-service` | Payment simulation, retry attempts, refunds | `payment_db` |
+| `inventory-service` | Product stock and reservations | `inventory_db` |
+| `notification-service` | Mock notification records | `notification_db` |
 
-## Communication patterns
+## Event Flow
 
-The services communicate through shared message contracts in `packages/contracts` instead of direct imports between service folders or HTTP calls between internal services.
-
-```txt
-packages/contracts/
-  commands.js
-  events.js
-```
-
-The API Gateway uses request/response commands such as `order.create` and `order.getById`. Domain changes are propagated through events such as `order.created`, `payment.completed`, `inventory.reserved`, `order.completed`, and `order.failed`.
-
-## Event flow
-
-Successful order flow:
+Happy path:
 
 ```txt
 order.created
@@ -83,7 +67,7 @@ order.completed
 notification.sent
 ```
 
-Failed payment flow:
+Payment failure:
 
 ```txt
 order.created
@@ -92,89 +76,54 @@ order.failed
 notification.sent
 ```
 
-Failed inventory flow:
+Inventory failure with compensation:
 
 ```txt
 order.created
 payment.completed
 inventory.failed
 order.failed
+payment.refund_requested
+payment.refunded
 notification.sent
 ```
 
-## Order statuses
-
-```txt
-PENDING
-PAYMENT_COMPLETED
-INVENTORY_RESERVED
-COMPLETED
-FAILED
-```
-
-## Failure flow
-
-The payment service intentionally fails some requests:
-
-```js
-const isPaymentSuccessful = Math.random() > 0.3;
-```
-
-This makes the demo useful for showing how an event-driven system reacts when part of the flow fails. The order service records the failure event, updates the order status to `FAILED`, and publishes `order.failed` so the notification service can react.
-
-## Correlation IDs and logs
-
-Every `POST /orders` request receives a `correlationId` from the API Gateway. That ID is carried through every command/event and appears in structured JSON logs.
-
-Example log:
-
-```json
-{
-  "service": "payment-service",
-  "message": "Payment completed",
-  "orderId": "order-id",
-  "correlationId": "correlation-id",
-  "timestamp": "2026-05-10T12:00:00.000Z"
-}
-```
-
-This demonstrates the basic idea behind distributed tracing without adding a full tracing stack.
-
-## API endpoints
+## API
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `GET` | `/health` | Gateway and order-service health |
+| `GET` | `/health` | Checks all internal services |
 | `GET` | `/docs` | Swagger UI |
-| `POST` | `/orders` | Create an order |
-| `GET` | `/orders` | List orders |
-| `GET` | `/orders/:id` | Get one order |
-| `GET` | `/orders/:id/timeline` | Get event timeline for one order |
+| `POST` | `/orders` | Creates an order |
+| `GET` | `/orders` | Lists orders |
+| `GET` | `/orders/:id` | Gets one order |
+| `GET` | `/orders/:id/timeline` | Gets order event timeline |
 
-## How to run
-
-### Local development
-
-```bash
-npm install
-npm run dev
-```
-
-### Docker Compose
+## Run with Docker Compose
 
 ```bash
 docker compose up --build
 ```
 
-Then open:
+Open Swagger:
 
 ```txt
 http://localhost:3000/docs
 ```
 
-## Example requests
+## Local Development
 
-Create an order:
+Run PostgreSQL databases first, then:
+
+```bash
+npm install
+cp .env.example .env
+npm run prisma:generate
+npm run db:push
+npm run dev
+```
+
+## Demo Scenario 1: Successful Order
 
 ```bash
 curl -X POST http://localhost:3000/orders \
@@ -184,90 +133,84 @@ curl -X POST http://localhost:3000/orders \
     "items": [
       {
         "productId": "product-1",
-        "quantity": 2
+        "quantity": 2,
+        "price": 100
       }
     ],
-    "totalPrice": 500
+    "simulatePaymentFailure": false,
+    "simulateInventoryFailure": false
   }'
 ```
 
-Get the order:
+Expected timeline:
 
-```bash
-curl http://localhost:3000/orders/<order-id>
+```txt
+order.created
+payment.completed
+inventory.reserved
+order.completed
+notification.sent
 ```
 
-Get the event timeline:
-
-```bash
-curl http://localhost:3000/orders/<order-id>/timeline
-```
-
-Validation example:
+## Demo Scenario 2: Payment Failure
 
 ```bash
 curl -X POST http://localhost:3000/orders \
   -H "Content-Type: application/json" \
   -d '{
-    "userId": "",
-    "items": [],
-    "totalPrice": 0
+    "userId": "user-1",
+    "items": [
+      {
+        "productId": "product-1",
+        "quantity": 2,
+        "price": 100
+      }
+    ],
+    "simulatePaymentFailure": true
   }'
 ```
 
-## Project structure
+Expected timeline:
 
 ```txt
-cote-microservis-demo/
-  apps/
-    api-gateway/
-    order-service/
-    payment-service/
-    inventory-service/
-    notification-service/
-  packages/
-    contracts/
-      commands.js
-      events.js
-    shared/
-      logger.js
-  Dockerfile
-  docker-compose.yml
-  package.json
+order.created
+payment.failed
+order.failed
+notification.sent
 ```
 
-## Why cote.js?
+## Demo Scenario 3: Inventory Failure and Refund
 
-This demo uses cote.js to explore zero-configuration service communication in Node.js. It is useful for learning request/response and publish/subscribe patterns without setting up a heavier broker first.
-
-In production systems, alternatives such as RabbitMQ, Kafka, Redis Pub/Sub, NATS, or AWS SNS/SQS can also be used depending on durability, scalability, ordering, throughput, and operational needs.
-
-## What I learned
-
-- How to expose one HTTP API Gateway while keeping internal services decoupled.
-- How to model request/response commands separately from publish/subscribe events.
-- Why shared contracts matter in event-driven systems.
-- How correlation IDs help trace one business flow across multiple services.
-- How failure events affect order state and downstream notifications.
-- Why an event timeline is useful for debugging distributed workflows.
-
-## Possible improvements
-
-- Persist orders and events with PostgreSQL + Prisma.
-- Add retry and dead-letter simulations.
-- Add authentication at the API Gateway.
-- Add integration tests that boot all services.
-- Replace in-memory event storage with durable event persistence.
-- Compare the same flow with RabbitMQ, Kafka, NATS, or Redis Streams.
-
-## Portfolio description
-
-```txt
-A Node.js microservice demo using Express.js as an API Gateway and cote.js for internal service communication. The project demonstrates request/response messaging, publish/subscribe events, order lifecycle tracking, correlation IDs, failure simulation and Docker-based service orchestration.
+```bash
+curl -X POST http://localhost:3000/orders \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": "user-1",
+    "items": [
+      {
+        "productId": "product-1",
+        "quantity": 9999,
+        "price": 100
+      }
+    ],
+    "simulateInventoryFailure": true
+  }'
 ```
 
-Turkish version:
+Expected timeline:
 
 ```txt
-Express.js API Gateway ve cote.js servis iletişimi kullanılarak geliştirilmiş event-driven microservice demo projesi. Sipariş oluşturma, ödeme simülasyonu, stok rezervasyonu, bildirim gönderimi, correlation ID, event timeline ve hata senaryolarını içerir.
+order.created
+payment.completed
+inventory.failed
+order.failed
+payment.refund_requested
+payment.refunded
+notification.sent
+```
+
+## Portfolio Summary
+
+```txt
+Built an event-driven Node.js microservice demo using Express.js, cote.js, PostgreSQL, Prisma and Docker Compose. Implemented service-to-service communication, publish/subscribe event flow, distributed order lifecycle tracking, correlation IDs, failure simulation and compensation logic for refund scenarios.
 ```
