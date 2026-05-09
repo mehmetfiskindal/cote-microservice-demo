@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  # API Gateway Service
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - COTE_DISCOVERY_REDIS_URL=redis://redis:6379
+    volumes:
+      - ./apps/api-gateway:/app/apps/api-gateway
+      - ./node_modules:/app/node_modules
+    depends_on:
+      - redis
+    networks:
+      - microservices-network
+    command: npm run dev:api
+
+  # Order Service
+  order-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: order-service
+    environment:
+      - NODE_ENV=development
+      - COTE_DISCOVERY_REDIS_URL=redis://redis:6379
+    volumes:
+      - ./apps/order-service:/app/apps/order-service
+      - ./node_modules:/app/node_modules
+    depends_on:
+      - redis
+    networks:
+      - microservices-network
+    command: npm run dev:order
+
+  # Payment Service
+  payment-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: payment-service
+    environment:
+      - NODE_ENV=development
+      - COTE_DISCOVERY_REDIS_URL=redis://redis:6379
+    volumes:
+      - ./apps/payment-service:/app/apps/payment-service
+      - ./node_modules:/app/node_modules
+    depends_on:
+      - redis
+    networks:
+      - microservices-network
+    command: npm run dev:payment
+
+  # Inventory Service
+  inventory-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: inventory-service
+    environment:
+      - NODE_ENV=development
+      - COTE_DISCOVERY_REDIS_URL=redis://redis:6379
+    volumes:
+      - ./apps/inventory-service:/app/apps/inventory-service
+      - ./node_modules:/app/node_modules
+    depends_on:
+      - redis
+    networks:
+      - microservices-network
+    command: npm run dev:inventory
+
+  # Notification Service
+  notification-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: notification-service
+    environment:
+      - NODE_ENV=development
+      - COTE_DISCOVERY_REDIS_URL=redis://redis:6379
+    volumes:
+      - ./apps/notification-service:/app/apps/notification-service
+      - ./node_modules:/app/node_modules
+    depends_on:
+      - redis
+    networks:
+      - microservices-network
+    command: npm run dev:notification
+
+  # Redis (for cote.js discovery - optional but recommended)
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - microservices-network
+
+networks:
+  microservices-network:
+    driver: bridge
