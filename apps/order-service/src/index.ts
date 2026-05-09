@@ -1,5 +1,6 @@
 import "dotenv/config";
 const cote = require("cote");
+const express = require("express");
 
 import { Events } from "../../../packages/contracts/src";
 import { log } from "../../../packages/shared/src";
@@ -36,7 +37,18 @@ const subscriber = new cote.Subscriber({
   ]
 });
 
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+app.use(express.json());
+
+app.get("/health", (_req: any, res: any) => {
+  res.json({ status: "UP", service: SERVICE_NAME, timestamp: new Date().toISOString() });
+});
+
 registerOrderHandlers(responder, subscriber);
 startOutboxPublisher(prisma, publisher);
 
-log(SERVICE_NAME, "Order Service started");
+app.listen(PORT, () => {
+  log(SERVICE_NAME, `Order Service started on port ${PORT}`);
+});

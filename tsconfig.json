@@ -14,5 +14,8 @@
   "include": [
     "apps/**/*.ts",
     "packages/**/*.ts"
+  ],
+  "exclude": [
+    "apps/monitoring-dashboard"
   ]
 }

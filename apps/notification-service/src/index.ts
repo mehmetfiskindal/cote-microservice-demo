@@ -1,5 +1,6 @@
 import "dotenv/config";
 const cote = require("cote");
+const express = require("express");
 
 import { Events } from "../../../packages/contracts/src";
 import { log } from "../../../packages/shared/src";
@@ -26,6 +27,17 @@ const publisher = new cote.Publisher({
   broadcasts: [Events.NotificationSent]
 });
 
+const app = express();
+const PORT = process.env.PORT || 3004;
+
+app.use(express.json());
+
+app.get("/health", (_req: any, res: any) => {
+  res.json({ status: "UP", service: SERVICE_NAME, timestamp: new Date().toISOString() });
+});
+
 registerNotificationSubscribers(responder, subscriber, publisher);
 
-log(SERVICE_NAME, "Notification Service started");
+app.listen(PORT, () => {
+  log(SERVICE_NAME, `Notification Service started on port ${PORT}`);
+});

@@ -25,6 +25,7 @@ services:
     container_name: v3-order-service
     environment:
       NODE_ENV: development
+      PORT: 3001
       ORDER_DATABASE_URL: postgresql://postgres:postgres@order-db:5432/order_db
       COTE_DISCOVERY_REDIS_URL: redis://redis:6379
     depends_on:
@@ -39,6 +40,7 @@ services:
     container_name: v3-payment-service
     environment:
       NODE_ENV: development
+      PORT: 3002
       PAYMENT_DATABASE_URL: postgresql://postgres:postgres@payment-db:5432/payment_db
       COTE_DISCOVERY_REDIS_URL: redis://redis:6379
     depends_on:
@@ -53,6 +55,7 @@ services:
     container_name: v3-inventory-service
     environment:
       NODE_ENV: development
+      PORT: 3003
       INVENTORY_DATABASE_URL: postgresql://postgres:postgres@inventory-db:5432/inventory_db
       COTE_DISCOVERY_REDIS_URL: redis://redis:6379
     depends_on:
@@ -67,12 +70,42 @@ services:
     container_name: v3-notification-service
     environment:
       NODE_ENV: development
+      PORT: 3004
       NOTIFICATION_DATABASE_URL: postgresql://postgres:postgres@notification-db:5432/notification_db
       COTE_DISCOVERY_REDIS_URL: redis://redis:6379
     depends_on:
       - redis
       - notification-db
     command: sh -c "npx prisma generate --schema apps/notification-service/prisma/schema.prisma && until npx prisma db push --schema apps/notification-service/prisma/schema.prisma; do sleep 2; done && npm run dev:notification"
+
+  monitoring-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: v3-monitoring-service
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      ORDER_DATABASE_URL: postgresql://postgres:postgres@order-db:5432/order_db
+      COTE_DISCOVERY_REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+      - order-db
+    command: sh -c "npx prisma generate --schema apps/monitoring-service/prisma/schema.prisma && until npx prisma db push --schema apps/monitoring-service/prisma/schema.prisma; do sleep 2; done && npm run dev:monitoring"
+
+  monitoring-dashboard:
+    build:
+      context: ./apps/monitoring-dashboard
+      dockerfile: Dockerfile
+    container_name: v3-monitoring-dashboard
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE: http://monitoring-service:4000/monitoring
+    depends_on:
+      - monitoring-service
 
   order-db:
     image: postgres:16-alpine
