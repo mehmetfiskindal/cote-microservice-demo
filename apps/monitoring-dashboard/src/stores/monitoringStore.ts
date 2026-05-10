@@ -1,73 +1,56 @@
-import { createStore } from '@geajs/core';
-
-export interface Metrics {
-  totalOrders: number;
-  completedOrders: number;
-  failedOrders: number;
-  paymentFailureRate: number;
-  inventoryFailureRate: number;
-  averageResponseTime: number;
-  activeServices: number;
-  ordersPerMinute: number;
-  paymentSuccessCount: number;
-  paymentFailureCount: number;
-  inventoryFailureCount: number;
-}
-
-export interface ServiceHealth {
-  name: string;
-  status: "UP" | "DOWN";
-  uptime: number;
-  lastSeen: string;
-}
-
-export interface TimelineEvent {
-  event: string;
-  timestamp: string;
-  service: string;
-}
-
-export interface OrderTimeline {
-  orderId: string;
-  correlationId: string;
-  status: string;
-  events: TimelineEvent[];
-  createdAt: string;
-}
-
-const defaultMetrics: Metrics = {
-  totalOrders: 0,
-  completedOrders: 0,
-  failedOrders: 0,
-  paymentFailureRate: 0,
-  inventoryFailureRate: 0,
-  averageResponseTime: 0,
-  activeServices: 0,
-  ordersPerMinute: 0,
-  paymentSuccessCount: 0,
-  paymentFailureCount: 0,
-  inventoryFailureCount: 0
-};
-
-export const metricsStore = createStore({
-  metrics: { ...defaultMetrics },
-  services: [] as ServiceHealth[],
-  timelines: [] as OrderTimeline[],
+export const metricsStore = {
+  metrics: {
+    totalOrders: 0,
+    completedOrders: 0,
+    failedOrders: 0,
+    paymentFailureRate: 0,
+    inventoryFailureRate: 0,
+    averageResponseTime: 0,
+    activeServices: 0,
+    ordersPerMinute: 0,
+    paymentSuccessCount: 0,
+    paymentFailureCount: 0,
+    inventoryFailureCount: 0
+  },
+  services: [],
+  timelines: [],
   activeTab: "overview",
   loading: false,
-  setMetrics(m: Metrics) {
+  listeners: [],
+
+  subscribe(fn) {
+    this.listeners.push(fn);
+    return () => {
+      this.listeners = this.listeners.filter(l => l !== fn);
+    };
+  },
+
+  notify() {
+    this.listeners.forEach(fn => fn());
+  },
+
+  setMetrics(m) {
     this.metrics = m;
+    this.notify();
   },
-  setServices(s: ServiceHealth[]) {
+
+  setServices(s) {
     this.services = s;
+    this.notify();
   },
-  setTimelines(t: OrderTimeline[]) {
+
+  setTimelines(t) {
     this.timelines = t;
+    this.notify();
   },
-  setTab(tab: string) {
+
+  setTab(tab) {
     this.activeTab = tab;
+    this.notify();
   },
-  setLoading(l: boolean) {
+
+  setLoading(l) {
     this.loading = l;
+    this.notify();
   }
-});
+};

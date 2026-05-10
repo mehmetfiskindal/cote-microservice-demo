@@ -13,13 +13,10 @@
     "strict": false,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "skipLibCheck": true,
-    "jsx": "react-jsx",
-    "jsxImportSource": "@geajs/core"
+    "skipLibCheck": true
   },
   "include": [
     "src/**/*.ts",
-    "src/**/*.tsx",
     "src/**/*.d.ts",
     "vite.config.ts"
   ],
